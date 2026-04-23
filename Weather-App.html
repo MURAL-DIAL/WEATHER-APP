@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Weather + AQI Dashboard</title>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+
+<style>
+body {
+    margin: 0;
+    font-family: Arial;
+    background: #0b1a2a;
+    color: white;
+}
+
+/* LAYOUT */
+.container {
+    display: flex;
+    height: 100vh;
+}
+
+/* SIDEBAR */
+.sidebar {
+    width: 320px;
+    background: #081521;
+    padding: 15px;
+    box-sizing: border-box;
+}
+
+.sidebar h1 {
+    text-align: center;
+}
+
+/* SEARCH */
+.search-box {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+input {
+    padding: 12px;
+    border-radius: 8px;
+    border: none;
+}
+
+button {
+    padding: 12px;
+    border-radius: 8px;
+    border: none;
+    background: #00bcd4;
+    color: white;
+    cursor: pointer;
+}
+
+/* INFO */
+#info {
+    margin-top: 15px;
+    background: #10263a;
+    padding: 10px;
+    border-radius: 10px;
+}
+
+/* MAP */
+#map {
+    flex: 1;
+}
+
+/* MOBILE */
+@media (max-width: 768px) {
+    .container {
+        flex-direction: column;
+    }
+
+    .sidebar {
+        width: 100%;
+    }
+
+    #map {
+        height: calc(100vh - 260px);
+    }
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+    <!-- SIDEBAR -->
+    <div class="sidebar">
+        <h1>🌍 AQI Dashboard</h1>
+
+        <div class="search-box">
+            <input type="text" id="cityInput" placeholder="Search city...">
+            <button onclick="searchCity()">Search</button>
+            <button onclick="toggleMap()">🌙 Toggle Map</button>
+        </div>
+
+        <div id="info">
+            <p id="weather">Click map or search</p>
+            <p id="aqi"></p>
+        </div>
+    </div>
+
+    <!-- MAP -->
+    <div id="map"></div>
+
+</div>
+
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+<script>
+// 🌍 MAP
+let map = L.map('map').setView([20, 0], 2);
+
+let lightMap = L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png');
+let darkMap = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png');
+
+lightMap.addTo(map);
+
+let currentLayer = "light";
+let marker;
+
+// 🌙 TOGGLE
+function toggleMap() {
+    if (currentLayer === "light") {
+        map.removeLayer(lightMap);
+        darkMap.addTo(map);
+        currentLayer = "dark";
+    } else {
+        map.removeLayer(darkMap);
+        lightMap.addTo(map);
+        currentLayer = "light";
+    }
+}
+
+// 🖱️ CLICK MAP
+map.on('click', function(e) {
+    const lat = e.latlng.lat;
+    const lon = e.latlng.lng;
+
+    setMarker(lat, lon);
+    getWeather(lat, lon);
+    getAQI(lat, lon);
+});
+
+// 📍 MARKER
+function setMarker(lat, lon) {
+    if (marker) map.removeLayer(marker);
+    marker = L.marker([lat, lon]).addTo(map);
+}
+
+// 🔍 SEARCH CITY
+async function searchCity() {
+    const city = document.getElementById("cityInput").value;
+    const apiKey = "MY_API_KEY"; // 🔑 Replace this
+
+    const url = `https://api.openweathermap.org/data/2.5/weather?q=${city}&appid=${apiKey}`;
+
+    try {
+        const res = await fetch(url);
+        const data = await res.json();
+
+        const lat = data.coord.lat;
+        const lon = data.coord.lon;
+
+        map.setView([lat, lon], 8);
+        setMarker(lat, lon);
+
+        getWeather(lat, lon);
+        getAQI(lat, lon);
+
+    } catch {
+        document.getElementById("weather").innerText = "❌ City not found";
+        document.getElementById("aqi").innerText = "";
+    }
+}
+
+// 🌡️ WEATHER
+async function getWeather(lat, lon) {
+    const apiKey = "MY_API_KEY"; // 🔑 Replace this
+
+    const url = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${apiKey}&units=metric`;
+
+    try {
+        const res = await fetch(url);
+        const data = await res.json();
+
+        document.getElementById("weather").innerText =
+            `📍 ${data.name} | 🌡️ ${data.main.temp}°C | ${data.weather[0].description}`;
+
+    } catch {
+        document.getElementById("weather").innerText = "❌ Weather not available";
+    }
+}
+
+// 🌫️ REAL AQI (WAQI API)
+async function getAQI(lat, lon) {
+    const token = ""; // 🔑 Replace this
+
+    const url = `https://api.waqi.info/git init
+    
+    feed/geo:${lat};${lon}/?token=${token}`;
+
+    try {
+        const res = await fetch(url);
+        const data = await res.json();
+
+        if (data.status !== "ok") throw new Error();
+
+        const aqi = data.data.aqi;
+
+        let category = "";
+
+        if (aqi <= 50) category = "🟢 Good";
+        else if (aqi <= 100) category = "🟡 Moderate";
+        else if (aqi <= 150) category = "🟠 Unhealthy (Sensitive)";
+        else if (aqi <= 200) category = "🔴 Unhealthy";
+        else if (aqi <= 300) category = "🟣 Very Unhealthy";
+        else category = "⚫ Hazardous";
+
+        document.getElementById("aqi").innerText =
+            `🌫️ AQI: ${aqi} (${category})`;
+
+    } catch {
+        document.getElementById("aqi").innerText = "AQI not available";
+    }
+}
+
+// ⌨️ ENTER KEY
+document.getElementById("cityInput").addEventListener("keydown", function(e) {
+    if (e.key === "Enter") searchCity();
+});
+</script>
+
+</body>
+</html>
